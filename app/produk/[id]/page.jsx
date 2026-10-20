@@ -1,45 +1,125 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import TombolWhatsApp from "@/components/TombolWhatsApp";
+import GaleriFoto from "@/components/GaleriFoto";
+import KartuProduk from "@/components/KartuProduk";
 import { formatRupiah } from "@/lib/format";
+import { parseDetailProduk } from "@/lib/produk-helper";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-// US-02: ambil satu produk dari Supabase berdasarkan id, di sisi server.
+// US-02: detail produk dari Supabase
+// US-17: produk terkait
+// US-18: galeri foto
+// US-19: status stok
+// US-20: harga coret & badge
 export default async function HalamanDetailProduk({ params }) {
   const { id } = await params;
 
   const supabase = createServerClient();
-  const { data: produk, error } = await supabase
+  const { data: rawProduk, error } = await supabase
     .from("produk")
     .select("*")
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !produk) {
+  if (error || !rawProduk) {
     notFound();
   }
 
+  const produk = parseDetailProduk(rawProduk);
+
+  // Ambil produk terkait dari kategori yang sama, tidak termasuk produk saat ini (US-17)
+  let produkTerkait = [];
+  if (produk.kategori) {
+    const { data: terkait } = await supabase
+      .from("produk")
+      .select("*")
+      .eq("kategori", produk.kategori)
+      .neq("id", produk.id)
+      .limit(4);
+    produkTerkait = terkait || [];
+  }
+
   return (
-    <article className="grid gap-8 py-8 md:grid-cols-2 md:py-12">
-      <img
-        src={produk.foto_url}
-        alt={produk.nama}
-        className="aspect-square w-full rounded-2xl border border-garis bg-permukaan object-cover"
-      />
-      <div className="flex flex-col gap-4">
-        <Link href="/" className="text-sm text-teks-lembut underline underline-offset-4 hover:text-utama">
-          Kembali ke katalog
-        </Link>
-        <p className="text-sm text-teks-lembut">{produk.kategori}</p>
-        <h1 className="text-3xl font-extrabold leading-tight tracking-tight">{produk.nama}</h1>
-        <p className="self-start rounded-md bg-harga-latar px-3 py-1 text-xl font-bold text-harga">
-          {formatRupiah(produk.harga)}
-        </p>
-        <p className="max-w-prose leading-relaxed text-teks-lembut">{produk.deskripsi}</p>
-        <TombolWhatsApp produk={produk} />
-      </div>
-    </article>
+    <div className="py-8 md:py-12">
+      <article className="grid gap-8 md:grid-cols-2">
+        {/* Galeri foto produk (US-18) */}
+        <GaleriFoto fotoUrl={produk.foto_url} nama={produk.nama} />
+
+        <div className="flex flex-col gap-4">
+          <Link
+            href="/"
+            className="text-sm text-teks-lembut underline underline-offset-4 transition-colors hover:text-utama"
+          >
+            &larr; Kembali ke katalog
+          </Link>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-garis bg-permukaan px-3 py-1 text-xs font-semibold text-teks-lembut">
+              {produk.kategori}
+            </span>
+
+            {/* Badge Stok Habis (US-19) */}
+            {produk.isHabis ? (
+              <span className="rounded-full bg-bahaya px-3 py-1 text-xs font-bold text-white">
+                Stok Habis
+              </span>
+            ) : produk.badge ? (
+              /* Badge Produk (US-20: Baru / Terlaris) */
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold text-white ${
+                  produk.badge.toLowerCase() === "terlaris"
+                    ? "bg-amber-600"
+                    : "bg-utama"
+                }`}
+              >
+                {produk.badge}
+              </span>
+            ) : null}
+          </div>
+
+          <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+            {produk.nama}
+          </h1>
+
+          <div className="flex flex-wrap items-baseline gap-3">
+            <p className="self-start rounded-lg bg-harga-latar px-3.5 py-1.5 text-2xl font-bold text-harga">
+              {formatRupiah(produk.harga)}
+            </p>
+            {/* Harga Coret (US-20) */}
+            {produk.hargaCoret && produk.hargaCoret > produk.harga && (
+              <span className="text-base font-medium text-teks-lembut line-through">
+                {formatRupiah(produk.hargaCoret)}
+              </span>
+            )}
+          </div>
+
+          <p className="max-w-prose leading-relaxed text-teks-lembut">
+            {produk.deskripsiTampil}
+          </p>
+
+          <TombolWhatsApp produk={produk} />
+        </div>
+      </article>
+
+      {/* Produk Terkait (US-17) */}
+      {produkTerkait.length > 0 && (
+        <section className="mt-16 border-t border-garis pt-10">
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold">Produk terkait</h2>
+            <p className="mt-1 text-sm text-teks-lembut">
+              Pilihan lain dalam kategori &ldquo;{produk.kategori}&rdquo;
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {produkTerkait.map((item) => (
+              <KartuProduk key={item.id} produk={item} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
   );
 }
