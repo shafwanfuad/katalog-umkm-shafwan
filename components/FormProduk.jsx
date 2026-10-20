@@ -165,8 +165,24 @@ export default function FormProduk({ produk = {}, labelTombol }) {
         placeholder="Contoh: Minuman, Camilan, Bumbu"
       />
 
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="input-foto-file" className="text-sm font-semibold">
+          Unggah Foto Produk dari Komputer (US-29, Maks. 2MB)
+        </label>
+        <input
+          id="input-foto-file"
+          name="foto_file"
+          type="file"
+          accept="image/*"
+          className="w-full rounded-lg border border-garis bg-latar px-3 py-2 text-sm text-teks file:mr-3 file:rounded-md file:border-0 file:bg-permukaan file:px-3 file:py-1 file:text-xs file:font-semibold file:text-teks hover:file:bg-utama hover:file:text-white"
+        />
+        {state?.errors?.foto_file && (
+          <p className="text-xs text-bahaya font-medium">{state.errors.foto_file}</p>
+        )}
+      </div>
+
       <Input
-        label="Link foto"
+        label="Atau masukkan Link foto / URL gambar"
         name="foto_url"
         placeholder="https://... atau /produk/nama-file.svg (pisahkan koma untuk beberapa foto)"
         defaultValue={produk.foto_url}

@@ -4,6 +4,26 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 
+// K-12: In-memory rate limiting untuk percobaan login
+const loginAttempts = new Map();
+
+function periksaRateLimitLogin(key) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxPercobaan = 5;
+
+  const riwayat = loginAttempts.get(key) || [];
+  const terkini = riwayat.filter((waktu) => now - waktu < windowMs);
+
+  if (terkini.length >= maxPercobaan) {
+    return false;
+  }
+
+  terkini.push(now);
+  loginAttempts.set(key, terkini);
+  return true;
+}
+
 export async function login(prevState, formData) {
   const data = formData instanceof FormData ? formData : prevState;
   const email = data?.get?.("email")?.toString()?.trim();
@@ -11,6 +31,13 @@ export async function login(prevState, formData) {
 
   if (!email || !password) {
     return { error: "Email dan password wajib diisi." };
+  }
+
+  // K-12: Rate limit maksimal 5 percobaan per menit
+  if (!periksaRateLimitLogin(email)) {
+    return {
+      error: "Terlalu banyak percobaan login gagal. Harap tunggu 1 menit sebelum mencoba lagi.",
+    };
   }
 
   let errorPesan = null;
@@ -142,12 +169,59 @@ export async function tambahProduk(prevState, formData) {
       return { error: "Aksi ditolak: Anda harus login sebagai admin." };
     }
 
+    // US-29: Upload foto ke Supabase Storage
+    let finalFotoUrl = foto_url?.trim() || "";
+    const fotoFile = data?.get?.("foto_file");
+
+    if (fotoFile && typeof fotoFile === "object" && fotoFile.size > 0) {
+      if (!fotoFile.type?.startsWith("image/")) {
+        return {
+          errors: { foto_file: "File harus berupa gambar (JPG, PNG, WebP, SVG)." },
+          values: { nama, harga: rawHarga, kategori, foto_url, deskripsi },
+        };
+      }
+      const MAX_SIZE = 2 * 1024 * 1024;
+      if (fotoFile.size > MAX_SIZE) {
+        return {
+          errors: { foto_file: "Ukuran file foto maksimal 2MB." },
+          values: { nama, harga: rawHarga, kategori, foto_url, deskripsi },
+        };
+      }
+
+      const buffer = Buffer.from(await fotoFile.arrayBuffer());
+      const ext = fotoFile.name?.split(".").pop() || "jpg";
+      const fileName = `produk-${Date.now()}-${Math.random().toString(36).substring(2, 6)}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("produk")
+        .upload(fileName, buffer, {
+          contentType: fotoFile.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { error: `Gagal mengunggah foto ke storage: ${uploadError.message}` };
+      }
+
+      const { data: pubData } = supabase.storage
+        .from("produk")
+        .getPublicUrl(fileName);
+
+      if (pubData?.publicUrl) {
+        finalFotoUrl = pubData.publicUrl;
+      }
+    }
+
+    if (!finalFotoUrl) {
+      finalFotoUrl = "/produk/kopi.svg";
+    }
+
     const { error } = await supabase.from("produk").insert([
       {
         nama,
         harga,
         kategori,
-        foto_url: foto_url || "/produk/kopi.svg",
+        foto_url: finalFotoUrl,
         deskripsi,
       },
     ]);
@@ -205,13 +279,60 @@ export async function ubahProduk(prevState, formData) {
       return { error: "Aksi ditolak: Anda harus login sebagai admin." };
     }
 
+    // US-29: Upload foto baru jika ada
+    let finalFotoUrl = foto_url?.trim() || "";
+    const fotoFile = data?.get?.("foto_file");
+
+    if (fotoFile && typeof fotoFile === "object" && fotoFile.size > 0) {
+      if (!fotoFile.type?.startsWith("image/")) {
+        return {
+          errors: { foto_file: "File harus berupa gambar (JPG, PNG, WebP, SVG)." },
+          values: { id, nama, harga: rawHarga, kategori, foto_url, deskripsi },
+        };
+      }
+      const MAX_SIZE = 2 * 1024 * 1024;
+      if (fotoFile.size > MAX_SIZE) {
+        return {
+          errors: { foto_file: "Ukuran file foto maksimal 2MB." },
+          values: { id, nama, harga: rawHarga, kategori, foto_url, deskripsi },
+        };
+      }
+
+      const buffer = Buffer.from(await fotoFile.arrayBuffer());
+      const ext = fotoFile.name?.split(".").pop() || "jpg";
+      const fileName = `produk-${Date.now()}-${Math.random().toString(36).substring(2, 6)}.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("produk")
+        .upload(fileName, buffer, {
+          contentType: fotoFile.type,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        return { error: `Gagal mengunggah foto: ${uploadError.message}` };
+      }
+
+      const { data: pubData } = supabase.storage
+        .from("produk")
+        .getPublicUrl(fileName);
+
+      if (pubData?.publicUrl) {
+        finalFotoUrl = pubData.publicUrl;
+      }
+    }
+
+    if (!finalFotoUrl) {
+      finalFotoUrl = "/produk/kopi.svg";
+    }
+
     const { error } = await supabase
       .from("produk")
       .update({
         nama,
         harga,
         kategori,
-        foto_url: foto_url || "/produk/kopi.svg",
+        foto_url: finalFotoUrl,
         deskripsi,
       })
       .eq("id", id);
@@ -443,5 +564,80 @@ export async function tanyaProdukAI(produkId, pertanyaan) {
     return { error: "Asisten AI tidak dapat menjawab saat ini." };
   } catch (err) {
     return { error: err.message || "Gagal memproses pertanyaan." };
+  }
+}
+
+// US-46: Impor produk dari file CSV (validasi baris & login diperiksa)
+export async function imporProdukCSV(prevState, formData) {
+  const file = formData?.get?.("file_csv");
+  if (!file || typeof file !== "object" || file.size === 0) {
+    return { error: "Pilih file CSV terlebih dahulu." };
+  }
+
+  try {
+    const supabase = await createAdminClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return { error: "Aksi ditolak: Anda harus login sebagai admin." };
+    }
+
+    const text = await file.text();
+    const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+
+    if (lines.length <= 1) {
+      return { error: "File CSV kosong atau hanya berisi baris judul." };
+    }
+
+    const dataLines = lines.slice(1);
+    const barisValid = [];
+    const barisGagal = [];
+
+    dataLines.forEach((line, index) => {
+      const nomorBaris = index + 2;
+      const parts = line.split(",").map((s) => s.trim().replace(/^"|"$/g, ""));
+      const nama = parts[0];
+      const rawHarga = parts[1];
+      const kategori = parts[2] || "Umum";
+      const foto_url = parts[3] || "/produk/kopi.svg";
+      const deskripsi = parts[4] || "";
+
+      const harga = parseInt(rawHarga, 10);
+
+      if (!nama) {
+        barisGagal.push(`Baris ${nomorBaris}: Nama produk kosong.`);
+      } else if (isNaN(harga) || harga < 0) {
+        barisGagal.push(`Baris ${nomorBaris}: Harga '${rawHarga}' tidak valid (harus angka positif).`);
+      } else {
+        barisValid.push({
+          nama,
+          harga,
+          kategori,
+          foto_url,
+          deskripsi,
+        });
+      }
+    });
+
+    if (barisValid.length > 0) {
+      const { error: insErr } = await supabase.from("produk").insert(barisValid);
+      if (insErr) {
+        return { error: `Gagal menyimpan ke database: ${insErr.message}` };
+      }
+    }
+
+    revalidatePath("/", "layout");
+    revalidatePath("/admin");
+
+    return {
+      success: true,
+      berhasil: barisValid.length,
+      gagal: barisGagal.length,
+      daftarGagal: barisGagal,
+    };
+  } catch (err) {
+    return { error: err.message || "Gagal memproses file CSV." };
   }
 }

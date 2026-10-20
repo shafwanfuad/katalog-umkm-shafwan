@@ -118,6 +118,15 @@ export default async function HalamanAdmin({ searchParams }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Tombol Impor CSV (US-46) */}
+          <Link
+            href="/admin/impor-csv"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-garis bg-latar px-4 py-2.5 text-sm font-semibold text-teks transition-colors hover:border-utama hover:text-utama"
+          >
+            <span>📤</span>
+            <span>Impor CSV</span>
+          </Link>
+
           {/* Tombol Ekspor CSV (US-35) */}
           <a
             href="/admin/ekspor-csv"
