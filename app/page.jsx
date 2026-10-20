@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import KartuProduk from "@/components/KartuProduk";
 import FilterKatalog from "@/components/FilterKatalog";
 import Paginasi from "@/components/Paginasi";
+import TerakhirDilihat from "@/components/TerakhirDilihat";
 import { toko } from "@/lib/toko";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -37,10 +38,11 @@ export default async function HalamanKatalog({ searchParams }) {
       daftarKategori = ["Semua", ...Array.from(setKat)];
     }
 
-    // Hitung total produk sesuai filter untuk paginasi akurat (US-16)
+    // Hitung total produk sesuai filter untuk paginasi akurat (US-16 & US-32)
     let countQuery = supabase
       .from("produk")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .not("deskripsi", "ilike", "%[Nonaktif]%");
 
     if (q.trim()) {
       countQuery = countQuery.ilike("nama", `%${q.trim()}%`);
@@ -55,7 +57,10 @@ export default async function HalamanKatalog({ searchParams }) {
     totalHalaman = Math.max(1, Math.ceil(totalData / perHalaman));
 
     // Query produk dengan batasan query database (range)
-    let query = supabase.from("produk").select("*");
+    let query = supabase
+      .from("produk")
+      .select("*")
+      .not("deskripsi", "ilike", "%[Nonaktif]%");
 
     if (q.trim()) {
       query = query.ilike("nama", `%${q.trim()}%`);
@@ -148,6 +153,9 @@ export default async function HalamanKatalog({ searchParams }) {
             />
           </>
         )}
+
+        {/* Bagian Terakhir Dilihat (US-36) */}
+        <TerakhirDilihat />
       </section>
     </>
   );

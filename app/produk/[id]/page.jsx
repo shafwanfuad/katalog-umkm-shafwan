@@ -1,19 +1,66 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import TombolWhatsApp from "@/components/TombolWhatsApp";
+import TombolBagikan from "@/components/TombolBagikan";
 import GaleriFoto from "@/components/GaleriFoto";
 import KartuProduk from "@/components/KartuProduk";
+import CatatTerakhirDilihat from "@/components/CatatTerakhirDilihat";
+import KotakTanyaAI from "@/components/KotakTanyaAI";
 import { formatRupiah } from "@/lib/format";
 import { parseDetailProduk } from "@/lib/produk-helper";
+import { toko } from "@/lib/toko";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+// US-26: Metadata SEO dan Open Graph
+export async function generateMetadata({ params }) {
+  const { id } = await params;
+  try {
+    const supabase = createServerClient();
+    const { data: rawProduk } = await supabase
+      .from("produk")
+      .select("nama, deskripsi, foto_url")
+      .eq("id", id)
+      .maybeSingle();
+
+    if (!rawProduk) {
+      return {
+        title: "Produk Tidak Ditemukan",
+      };
+    }
+
+    const produk = parseDetailProduk(rawProduk);
+    const judul = `${produk.nama} | ${toko.nama}`;
+    const deskripsi = produk.deskripsiTampil || toko.tagline;
+
+    return {
+      title: judul,
+      description: deskripsi,
+      openGraph: {
+        title: judul,
+        description: deskripsi,
+        images: [
+          {
+            url: produk.foto_url || "/produk/kopi.svg",
+            alt: produk.nama,
+          },
+        ],
+      },
+    };
+  } catch {
+    return {
+      title: toko.nama,
+    };
+  }
+}
 
 // US-02: detail produk dari Supabase
 // US-17: produk terkait
 // US-18: galeri foto
 // US-19: status stok
 // US-20: harga coret & badge
+// US-23: tombol bagikan
 export default async function HalamanDetailProduk({ params }) {
   const { id } = await params;
 
@@ -24,7 +71,8 @@ export default async function HalamanDetailProduk({ params }) {
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !rawProduk) {
+  // US-32: produk nonaktif menampilkan halaman tidak ditemukan
+  if (error || !rawProduk || rawProduk.deskripsi?.includes("[Nonaktif]")) {
     notFound();
   }
 
@@ -49,17 +97,28 @@ export default async function HalamanDetailProduk({ params }) {
         <GaleriFoto fotoUrl={produk.foto_url} nama={produk.nama} />
 
         <div className="flex flex-col gap-4">
-          <Link
-            href="/"
-            className="text-sm text-teks-lembut underline underline-offset-4 transition-colors hover:text-utama"
-          >
-            &larr; Kembali ke katalog
-          </Link>
+          <div className="flex items-center justify-between">
+            <Link
+              href="/"
+              className="text-sm text-teks-lembut underline underline-offset-4 transition-colors hover:text-utama"
+            >
+              &larr; Kembali ke katalog
+            </Link>
+
+            {/* Tombol Bagikan / Salin Link (US-23) */}
+            <TombolBagikan judul={produk.nama} deskripsi={produk.deskripsiTampil} />
+          </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-garis bg-permukaan px-3 py-1 text-xs font-semibold text-teks-lembut">
+            {/* Tautan Kategori (US-49) */}
+            <Link
+              href={`/kategori/${encodeURIComponent(
+                produk.kategori?.toLowerCase().replace(/\s+/g, "-") || "umum"
+              )}`}
+              className="rounded-full border border-garis bg-permukaan px-3 py-1 text-xs font-semibold text-teks-lembut transition-colors hover:border-utama hover:text-utama"
+            >
               {produk.kategori}
-            </span>
+            </Link>
 
             {/* Badge Stok Habis (US-19) */}
             {produk.isHabis ? (
@@ -101,6 +160,12 @@ export default async function HalamanDetailProduk({ params }) {
           </p>
 
           <TombolWhatsApp produk={produk} />
+
+          {/* Tanya Asisten AI (US-50) */}
+          <KotakTanyaAI produkId={produk.id} namaProduk={produk.nama} />
+
+          {/* Pencatat Terakhir Dilihat (US-36) */}
+          <CatatTerakhirDilihat produk={produk} />
         </div>
       </article>
 

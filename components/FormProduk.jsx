@@ -80,23 +80,33 @@ export default function FormProduk({ produk = {}, labelTombol }) {
       {isEdit && <input type="hidden" name="id" value={produk.id} />}
       <input type="hidden" name="deskripsi" value={deskripsiFinal} />
 
-      <Input
-        label="Nama produk"
-        name="nama"
-        value={nama}
-        onChange={(e) => setNama(e.target.value)}
-        required
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="flex flex-col gap-1">
         <Input
-          label="Harga Jual (Rp)"
-          name="harga"
-          type="number"
-          min="0"
-          defaultValue={produk.harga}
+          label="Nama produk"
+          name="nama"
+          value={nama}
+          onChange={(e) => setNama(e.target.value)}
           required
         />
+        {state?.errors?.nama && (
+          <p className="text-xs font-medium text-bahaya">{state.errors.nama}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="flex flex-col gap-1">
+          <Input
+            label="Harga Jual (Rp)"
+            name="harga"
+            type="number"
+            min="0"
+            defaultValue={state?.values?.harga ?? produk.harga}
+            required
+          />
+          {state?.errors?.harga && (
+            <p className="text-xs font-medium text-bahaya">{state.errors.harga}</p>
+          )}
+        </div>
         <div className="flex flex-col gap-1.5 text-sm font-semibold">
           <label htmlFor="input-coret" className="text-sm font-semibold">
             Harga Coret / Normal (Rp) <span className="text-xs font-normal text-teks-lembut">(opsional)</span>

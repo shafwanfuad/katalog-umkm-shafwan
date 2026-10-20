@@ -22,6 +22,18 @@
   --color-bahaya: #b42318;
 }
 
+/* US-25: Mode Gelap */
+html.dark {
+  --color-latar: #111815;
+  --color-permukaan: #1a2420;
+  --color-garis: #2b3a32;
+  --color-teks: #edf3f0;
+  --color-teks-lembut: #9db2a7;
+
+  --color-harga: #f3b754;
+  --color-harga-latar: #382507;
+}
+
 html {
   color: var(--color-teks);
   background: var(--color-latar);

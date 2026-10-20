@@ -42,7 +42,15 @@ export default function KartuProduk({ produk }) {
         </div>
 
         <div className="flex flex-1 flex-col gap-1.5 p-3">
-          <p className="text-xs text-teks-lembut">{item.kategori}</p>
+          <Link
+            href={`/kategori/${encodeURIComponent(
+              item.kategori?.toLowerCase().replace(/\s+/g, "-") || "umum"
+            )}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs text-teks-lembut hover:text-utama hover:underline relative z-10 self-start"
+          >
+            {item.kategori}
+          </Link>
           <h3 className="font-semibold leading-snug line-clamp-2 group-hover:text-utama">
             {item.nama}
           </h3>
